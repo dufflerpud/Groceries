@@ -13,10 +13,17 @@
 use strict;
 use MIME::Lite;
 use lib "/usr/local/lib/perl";
-use COMMON;
+use cpi_db qw(dbadd dbdel dbget dbpop dbput dbread dbwrite
+ DBread DBwrite DBpop DBget DBput DBdelkey DBadd DBdel DBnewkey );
+use cpi_translate qw(xprint);
+use cpi_file qw(fatal cleanup read_file write_file);
+use cpi_setup qw(setup);
+use cpi_escape qw(javascript_esc);
+use cpi_user qw(admin_page logout_select);
+use cpi_cgi qw(show_vars);
 
-#$COMMON::TABLE_TAGS	= "bgcolor=\"#c0c0d0\"";
-$COMMON::TABLE_TAGS	= "USECSS";
+#$cpi_vars::TABLE_TAGS	= "bgcolor=\"#c0c0d0\"";
+$cpi_vars::TABLE_TAGS	= "USECSS";
 
 #package main;
 #our $FORMNAME		= "form";
@@ -26,11 +33,12 @@ package main;
 
 my $FORMNAME = "form";
 
-&COMMON::setup(
+&setup(
 	allow_account_creation=>0,
 	require_valid_email=>1,
 	require_valid_address=>1,
 	preset_language=>"en",
+	stderr=>"Groceries",
 	Qrequire_captcha=>1
 	);
 
@@ -42,8 +50,8 @@ our $AGENT		= $ENV{HTTP_USER_AGENT};
 
 our $form_top;
 
-my $SENDMAIL = "/usr/lib/sendmail";
-my $HELP_DIR = "$COMMON::BASEDIR/help";
+#my $cpi_vars::SENDMAIL ||= "/usr/lib/sendmail";
+my $HELP_DIR = "$cpi_vars::BASEDIR/help";
 
 #########################################################################
 #	Return true if the first item appears in the remaining list.	#
@@ -76,12 +84,12 @@ function footerfunc( fnc )
 </script>
 <form name=footerform method=post>
 <input type=hidden name=func>
-<input type=hidden name=SID value="$COMMON::SID">
-<input type=hidden name=USER value="$COMMON::USER">
+<input type=hidden name=SID value="$cpi_vars::SID">
+<input type=hidden name=USER value="$cpi_vars::USER">
 EOF
     $s .= <<EOF;
-    <center><table $COMMON::TABLE_TAGS border=1>
-    <tr><th><table $COMMON::TABLE_TAGS><tr><th
+    <center><table $cpi_vars::TABLE_TAGS border=1>
+    <tr><th><table $cpi_vars::TABLE_TAGS><tr><th
 EOF
     foreach my $button (
 	"dirmode:XL(Directory)",
@@ -93,11 +101,11 @@ EOF
 	    ( ($butdest eq $mode) ? " style='background-color:cyan'" : "" ) .
 	    " value=\"$buttext\"\n";
 	}
-    $s .= ">" . &COMMON::logout_select() . <<EOF;
+    $s .= ">" . &logout_select() . <<EOF;
 	</th></tr>
 	</table></th></tr></table></center></form>
 EOF
-    &COMMON::xprint( $s );
+    &xprint( $s );
     }
 
 #########################################################################
@@ -105,7 +113,7 @@ EOF
 #########################################################################
 sub check_if_app_needs_header()
     {
-    return ! &inlist(($COMMON::FORM{func}||""),"download","view");
+    return ! &inlist(($cpi_vars::FORM{func}||""),"download","view");
     }
 
 #########################################################################
@@ -114,7 +122,7 @@ sub check_if_app_needs_header()
 sub directory_screen
     {
     my $s = $form_top;
-    my @lists = &COMMON::dbget( $COMMON::DB, "lists" );
+    my @lists = &DBget( "lists" );
     $s .= <<EOF;
 <input type=hidden name=listind value="">
 <center><table border=1>
@@ -123,11 +131,11 @@ EOF
     foreach my $listind ( @lists )
         {
 	$s .= "<tr><th><input type=button help='button_select_list' onClick='submit_func(\"show\",\"$listind\");'></th><td>"
-	    . &COMMON::dbget($COMMON::DB,"list",$listind,"name")
+	    . &DBget("list",$listind,"name")
 	    . "</td><td>"
-	    . &COMMON::dbget($COMMON::DB,"list",$listind,"modified")
+	    . &DBget("list",$listind,"modified")
 	    . " XL(by) "
-	    . &COMMON::dbget($COMMON::DB,"list",$listind,"modifier")
+	    . &DBget("list",$listind,"modifier")
 	    . "</td></tr>";
 	}
     $s .= <<EOF;
@@ -135,7 +143,7 @@ EOF
 </table></center></form>
 EOF
     $s =~ s+%%JSCRIPT%%++gs;
-    &COMMON::xprint( $s );
+    &xprint( $s );
     &footer("directory");
     }
 
@@ -148,14 +156,14 @@ sub generate_email
 
     my $s = $form_top;
 
-    &COMMON::dbread( $COMMON::DB ) if( $dest );
+    &DBread() if( $dest );
 
     my @table_entries = ();
-    my @lists = &COMMON::dbget( $COMMON::DB, "lists" );
+    my @lists = &DBget( "lists" );
     foreach my $listind ( @lists )
         {
 	my @items = ();
-        my $list = ( &COMMON::dbget( $COMMON::DB, "list", $listind, "data" ) || "" );
+        my $list = ( &DBget( "list", $listind, "data" ) || "" );
 	foreach my $itempiece ( split(/type:/,$list) )
 	    {
 	    if( $itempiece =~ /"(.*)".*quantity:(\d+)/s )
@@ -166,31 +174,31 @@ sub generate_email
 	next if( ! @items );
 	push( @table_entries,
 	    "<td colspan=2>&nbsp;<p><b>"
-		. &COMMON::dbget($COMMON::DB,"list",$listind,"name")
+		. &DBget("list",$listind,"name")
 		. "</b> XL(modified) "
-		. &COMMON::dbget($COMMON::DB,"list",$listind,"modified")
+		. &DBget("list",$listind,"modified")
 		. " XL(by) "
-		. &COMMON::dbget($COMMON::DB,"list",$listind,"modifier")
+		. &DBget("list",$listind,"modifier")
 		. "</th>",
 	    "<th align=right>Quantity</th><th align=left>Items</th>",
 	    @items);
 	}
-    if( ! $COMMON::URL )
+    if( ! $cpi_vars::URL )
 	{
-	$COMMON::PROG = $0;
-	$COMMON::PROG=~ s+^.*/++;
-	$COMMON::PROG = "Groceries.cgi" if( $COMMON::PROG eq "app.cgi" );
-	$COMMON::URL = "http://www.brightsands.com/~chris/$COMMON::PROG";
+	$cpi_vars::PROG = $0;
+	$cpi_vars::PROG=~ s+^.*/++;
+	$cpi_vars::PROG = "Groceries.cgi" if( $cpi_vars::PROG eq "app.cgi" );
+	$cpi_vars::URL = "http://www.brightsands.com/~chris/$cpi_vars::PROG";
 	}
 
     $s .= <<EOF
 <center><table border=1><tr>
 EOF
     . join("</tr>\n<tr>",@table_entries) . "</tr></table>"
-    . "<a href=$COMMON::URL>Application</a></center>\n";
+    . "<a href=$cpi_vars::URL>Application</a></center>\n";
     if( ! $dest )
 	{
-	&COMMON::xprint( $s );
+	&xprint( $s );
 	&footer("directory");
 	}
     else
@@ -217,13 +225,13 @@ EOF
 		Data	=> "<html><head></head><body>$s</body></html>"
 		) || die("Cannot attach to mime message:  $!");
 
-	    open( OUT, "| $SENDMAIL -t 2>&1" )
-		|| die("Cannot run $SENDMAIL:  $!");
+	    open( OUT, "| $cpi_vars::SENDMAIL -t 2>&1" )
+		|| die("Cannot run $cpi_vars::SENDMAIL:  $!");
 	    print OUT $mime_msg->as_string;
 	    close( OUT );
 	    }
 	}
-    &COMMON::cleanup(0);
+    &cleanup(0);
     }
 
 #########################################################################
@@ -244,24 +252,24 @@ sub filename_to_item
 sub show_list
     {
     my $s = $form_top;
-    my $jscript=&read_file("$COMMON::BASEDIR/lib/$COMMON::PROG.js");
+    my $jscript=&read_file("$cpi_vars::BASEDIR/lib/$cpi_vars::PROG.js");
 
-    my $menu = ( &COMMON::dbget( $COMMON::DB, "menu" ) || "" );
-    my $list = ( &COMMON::dbget( $COMMON::DB, "list", $COMMON::FORM{listind}, "data" ) || "" );
-    my $stores = ( &COMMON::dbget( $COMMON::DB, "stores" ) || "" );
-    my $listname = ( &COMMON::dbget( $COMMON::DB, "list", $COMMON::FORM{listind}, "name" ) || "" );
+    my $menu = ( &DBget( "menu" ) || "" );
+    my $list = ( &DBget( "list", $cpi_vars::FORM{listind}, "data" ) || "" );
+    my $stores = ( &DBget( "stores" ) || "" );
+    my $listname = ( &DBget( "list", $cpi_vars::FORM{listind}, "name" ) || "" );
 
     print STDERR "CMC 0 menu=[$menu]\n";
     print STDERR "CMC 0 list=[$list]\n";
     print STDERR "CMC 0 stores=[$stores]\n";
 
-    $menu = &COMMON::javascript_esc( $menu, '"', "&quot;" );
-    $list = &COMMON::javascript_esc( $list, '"', "&quot;" );
-    $stores = &COMMON::javascript_esc( $stores, '"', "&quot;" );
+    $menu = &javascript_esc( $menu, '"', "&quot;" );
+    $list = &javascript_esc( $list, '"', "&quot;" );
+    $stores = &javascript_esc( $stores, '"', "&quot;" );
 
-    #print STDERR "web=$COMMON::BASEDIR/web.\n";
-    opendir( D, "$COMMON::BASEDIR/public" ) ||
-        &fatal("Cannot opendir($COMMON::BASEDIR/web:  $!");
+    #print STDERR "web=$cpi_vars::BASEDIR/web.\n";
+    opendir( D, "$cpi_vars::BASEDIR/public" ) ||
+        &fatal("Cannot opendir($cpi_vars::BASEDIR/web:  $!");
     my @files = grep(/[^\.].*\.jpg/,readdir(D));
     closedir(D);
     my $item_to_filename = join("",
@@ -274,7 +282,7 @@ sub show_list
     print STDERR "CMC 1 stores=[$stores]\n";
 
     $s .= <<EOF;
-<input type=hidden name=listind value="$COMMON::FORM{listind}">
+<input type=hidden name=listind value="$cpi_vars::FORM{listind}">
 <input type=hidden name=menu value="$menu">
 <input type=hidden name=list value="$list">
 <input type=hidden name=stores value="$stores">
@@ -288,10 +296,10 @@ EOF
     $s =~ s+%%JSCRIPT%%+$jscript+gs;
     $s =~ s+%%FORMNAME%%+$FORMNAME+gs;
     $s =~ s+%%ITEM_TO_FILENAME%%+$item_to_filename+gs;
-    $s =~ s+%%WEB%%+$COMMON::PROG+gs;
+    $s =~ s+%%WEB%%+$cpi_vars::PROG+gs;
 
     &write_file("/tmp/dump",$s);
-    &COMMON::xprint( $s );
+    &xprint( $s );
     &footer("list");
     }
 
@@ -307,40 +315,40 @@ sub update_list
 
     foreach my $vn ( "menu", "stores", "listind", "listname" )
 	{
-        push(@probs,"$vn XL(is not specified.)") if( ! $COMMON::FORM{$vn} );
+        push(@probs,"$vn XL(is not specified.)") if( ! $cpi_vars::FORM{$vn} );
 	}
 
-    push( @probs, "XL(Menu is truncated)") if( length( $COMMON::FORM{menu} ) < 1000 );
+    push( @probs, "XL(Menu is truncated)") if( length( $cpi_vars::FORM{menu} ) < 1000 );
 
     if( @probs )
 	{
 	push( @probs, "XL(Push the back button and fix the problem.)" );
-	&COMMON::xprint( join("<br>",@probs) );
-	&COMMON::cleanup();
+	&xprint( join("<br>",@probs) );
+	&cleanup();
 	return;
 	}
 
-    &COMMON::dbwrite( $COMMON::DB );
-    &COMMON::dbput( $COMMON::DB, "menu", $COMMON::FORM{menu} );
-    &COMMON::dbput( $COMMON::DB, "stores", $COMMON::FORM{stores} );
-    if( $COMMON::FORM{list} )
+    &DBwrite();
+    &DBput( "menu", $cpi_vars::FORM{menu} );
+    &DBput( "stores", $cpi_vars::FORM{stores} );
+    if( $cpi_vars::FORM{list} )
 	{
-	&COMMON::dbput( $COMMON::DB, "list", $COMMON::FORM{listind},
-	    "data", $COMMON::FORM{list} );
-	&COMMON::dbput( $COMMON::DB, "list", $COMMON::FORM{listind},
-	    "name", $COMMON::FORM{listname} );
-	&COMMON::dbput( $COMMON::DB, "list", $COMMON::FORM{listind},
-	    "modifier", $COMMON::USER );
-	&COMMON::dbput( $COMMON::DB, "list", $COMMON::FORM{listind},
+	&DBput( "list", $cpi_vars::FORM{listind},
+	    "data", $cpi_vars::FORM{list} );
+	&DBput( "list", $cpi_vars::FORM{listind},
+	    "name", $cpi_vars::FORM{listname} );
+	&DBput( "list", $cpi_vars::FORM{listind},
+	    "modifier", $cpi_vars::USER );
+	&DBput( "list", $cpi_vars::FORM{listind},
 	    "modified", $datetime );
-	&COMMON::dbadd( $COMMON::DB, "lists", $COMMON::FORM{listind} );
+	DBadd( "lists", $cpi_vars::FORM{listind} );
 	}
     else
         {
-	&COMMON::dbdel( $COMMON::DB, "lists", $COMMON::FORM{listind} );
-	$COMMON::FORM{listind} = "";
+	&DBdel( "lists", $cpi_vars::FORM{listind} );
+	$cpi_vars::FORM{listind} = "";
 	}
-    &COMMON::dbpop( $COMMON::DB );
+    &DBpop();
     }
 
 
@@ -349,26 +357,26 @@ sub update_list
 #########################################################################
 sub user_logic
     {
-    my $fnc = ( $COMMON::FORM{func} || "" );
-    if( $fnc eq "admin"		) { &COMMON::admin_page();		}
+    my $fnc = ( $cpi_vars::FORM{func} || "" );
+    if( $fnc eq "admin"		) { &admin_page();		}
     elsif( $fnc ne "" && $fnc ne "email" && $fnc ne "dirmode" && $fnc ne "dologin" && $fnc ne "show" )
         { &fatal("Unrecognized function \"$fnc\"."); }
     if( $fnc eq "show" )
         {
-	if( $COMMON::FORM{arg} )
-	    { $COMMON::FORM{listind} = $COMMON::FORM{arg}; }
+	if( $cpi_vars::FORM{arg} )
+	    { $cpi_vars::FORM{listind} = $cpi_vars::FORM{arg}; }
 	else
 	    {
-	    $COMMON::FORM{listind} = `date +%s`;
-	    chomp( $COMMON::FORM{listind} );
+	    $cpi_vars::FORM{listind} = `date +%s`;
+	    chomp( $cpi_vars::FORM{listind} );
 	    }
 	}
-    &update_list() if( $COMMON::FORM{displaying} );
+    &update_list() if( $cpi_vars::FORM{displaying} );
     if( $fnc eq "email" )
 	{
 	generate_email();
 	}
-    elsif( $COMMON::FORM{listind} )
+    elsif( $cpi_vars::FORM{listind} )
         { &show_list(); }
     else
 	{ &directory_screen(); }
@@ -387,21 +395,21 @@ if( ($ENV{SCRIPT_NAME}||"") eq "" )
     elsif( $fnc =~ /email=(.*)/ )	{ generate_email($1);	}
     else
 	{
-	&fatal("XL(Usage):  $COMMON::PROG.cgi (dump|dumpaccounts|dumptranslations|undump|undumpaccounts|undumptranslations) [ dumpname ]",0)
+	&fatal("XL(Usage):  $cpi_vars::PROG.cgi (dump|dumpaccounts|dumptranslations|undump|undumpaccounts|undumptranslations) [ dumpname ]",0)
 	}
     }
 
 my $using_agent =
     $ENV{HTTP_USER_AGENT}
-    || $COMMON::FORM{genform}
-    || $COMMON::FORM{client}
+    || $cpi_vars::FORM{genform}
+    || $cpi_vars::FORM{client}
     || "unknown";
 my $agent =
-#    ( $COMMON::FORM{genform} ? "PhoneGap_" . $COMMON::FORM{genform}
-#    : $COMMON::FORM{client} ? "PhoneGap_" . $COMMON::FORM{client}
+#    ( $cpi_vars::FORM{genform} ? "PhoneGap_" . $cpi_vars::FORM{genform}
+#    : $cpi_vars::FORM{client} ? "PhoneGap_" . $cpi_vars::FORM{client}
 #    : $ENV{HTTP_USER_AGENT}
 #    );
-    (($COMMON::FORM{genform} || $COMMON::FORM{client}) ? "PhoneGap_" : "") .
+    (($cpi_vars::FORM{genform} || $cpi_vars::FORM{client}) ? "PhoneGap_" : "") .
     ( $using_agent =~ /iPhone/ ? "iPhone"
         : ( $using_agent =~ /Wget/ ? "iPhone"
 	: ( $using_agent =~ /iPad/ ? "iPad"
@@ -410,10 +418,10 @@ my $agent =
 printf STDERR ( "CMC got to %d.\n", __LINE__ );
 
 #my($nam,$pass,$uid,$gid,$quota,$comment,$gcos,$dir,$shell)
-#    = getpwnam("$COMMON::USER");
+#    = getpwnam("$cpi_vars::USER");
 
-#&COMMON::show_vars()
-    #if( ! &inlist(($COMMON::FORM{func}||""),"download","view") );
+#&show_vars()
+    #if( ! &inlist(($cpi_vars::FORM{func}||""),"download","view") );
 
 $form_top = <<EOF;
 <QSCRIPT SRC="usprompt.js" TYPE="text/javascript"></QSCRIPT>
@@ -431,17 +439,17 @@ function submit_func( fnc, val )
     }
 %%JSCRIPT%%
 </script>
-</head><body $COMMON::BODY_TAGS>
+</head><body $cpi_vars::BODY_TAGS>
 <form name=$FORMNAME method=post ENCTYPE="multipart/form-data">
 <input type=hidden name=func>
 <input type=hidden name=arg>
-<input type=hidden name=SID value="$COMMON::SID">
-<input type=hidden name=USER value="$COMMON::USER">
-$COMMON::HELP_IFRAME
+<input type=hidden name=SID value="$cpi_vars::SID">
+<input type=hidden name=USER value="$cpi_vars::USER">
+$cpi_vars::HELP_IFRAME
 EOF
 
 printf STDERR ( "CMC got to %d.\n", __LINE__ );
 
 &user_logic();
 
-&COMMON::cleanup(0);
+&cleanup(0);
