@@ -19,7 +19,7 @@ use cpi_translate qw(xprint);
 use cpi_file qw(fatal cleanup read_file write_file);
 use cpi_setup qw(setup);
 use cpi_escape qw(javascript_esc);
-use cpi_user qw(admin_page logout_select);
+use cpi_user qw(logout_select);
 use cpi_cgi qw(show_vars);
 
 #$cpi_vars::TABLE_TAGS	= "bgcolor=\"#c0c0d0\"";
@@ -357,8 +357,7 @@ sub update_list
 sub user_logic
     {
     my $fnc = ( $cpi_vars::FORM{func} || "" );
-    if( $fnc eq "admin"		) { &admin_page();		}
-    elsif( $fnc ne "" && $fnc ne "email" && $fnc ne "dirmode" && $fnc ne "dologin" && $fnc ne "show" )
+    if( $fnc ne "" && $fnc ne "email" && $fnc ne "dirmode" && $fnc ne "dologin" && $fnc ne "show" )
         { &fatal("Unrecognized function \"$fnc\"."); }
     if( $fnc eq "show" )
         {
