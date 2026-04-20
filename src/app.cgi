@@ -42,6 +42,7 @@ use cpi_setup qw(setup);
 use cpi_escape qw(javascript_esc);
 use cpi_user qw(logout_select);
 use cpi_cgi qw(show_vars);
+use cpi_vars;
 
 #$cpi_vars::TABLE_TAGS	= "bgcolor=\"#c0c0d0\"";
 $cpi_vars::TABLE_TAGS	= "USECSS";
@@ -202,13 +203,6 @@ sub generate_email
 		. "</th>",
 	    "<th align=right>Quantity</th><th align=left>Items</th>",
 	    @items);
-	}
-    if( ! $cpi_vars::URL )
-	{
-	$cpi_vars::PROG = $0;
-	$cpi_vars::PROG=~ s+^.*/++;
-	$cpi_vars::PROG = "Groceries.cgi" if( $cpi_vars::PROG eq "app.cgi" );
-	$cpi_vars::URL = "http://www.brightsands.com/~chris/$cpi_vars::PROG";
 	}
 
     $s .= <<EOF
